@@ -1,0 +1,234 @@
+---
+title: "Assignment 2"
+author: "Carter Pearon"
+date: "August 17, 2015"
+output: html_document
+---
+
+## 1
+
+The graphic below depicts how the type of flight cancellation varied by month for the entire year of 2008.  The cancellation codes are A = carrier, B = weather, C = NAS, 
+D = security.  It turns out there are 0 observations of cancellation code = D, i.e. a cancelled flight due to security reasons, and so we will on consider cancellation codes of A, B and C.
+```{r}
+#Read in the data
+
+flights = read.csv('ABIA.csv', header = TRUE)
+
+# select only the flights that were cancelled
+cancelled = subset(flights, flights$Cancelled == 1)
+
+# now lets reduce the dataframe to only include our columns of interest
+cancelled = cancelled[,c(2,23)]
+
+# subset the data by cancellation code
+type_A = subset(cancelled, CancellationCode == "A")
+type_B = subset(cancelled, CancellationCode == "B")
+type_C = subset(cancelled, CancellationCode == "C")
+
+# count function to be used in the next chunck of code to count the number of each cancellation type per month
+count = function(x) {
+  length(x)
+}
+
+total_cancels_by_month = aggregate(CancellationCode ~ Month, cancelled, count)
+type_A_by_month = aggregate(CancellationCode ~ Month, type_A, count)
+type_B_by_month = aggregate(CancellationCode ~ Month, type_B, count)
+type_C_by_month = aggregate(CancellationCode ~ Month, type_C, count)
+
+newrow = c(11, 0)
+
+# needed to add a row for type C, month 11, as it had 0 observations
+type_C_by_month = rbind(type_C_by_month[1:10,],newrow,type_C_by_month[(11),])
+
+#Combine all the months into one data frame, including the total # across all types
+type_by_month = cbind(type_A_by_month,type_B_by_month[,2],type_C_by_month[,2],total_cancels_by_month[,2])
+
+# make the column names neater
+names(type_by_month)[1] = paste('Month')
+names(type_by_month)[2] = paste('carrier')
+names(type_by_month)[3] = paste('weather')
+names(type_by_month)[4] = paste('NAS')
+names(type_by_month)[5] = paste('Total')
+
+# create an empty plot with axis labels and the right dimensions
+plot(1, type="n",main = "Cancellations per Month by Type", xlab="Month", ylab="# of Cancellations", xlim=c(1,12), ylim=c(0,235 ))
+
+# plot our lines
+lines(type_by_month$Month,type_by_month$carrier,col="purple", type = "b", main = "carrier", pch= 5)
+lines(type_by_month$Month,type_by_month$weather,col="yellow", type = "b", pch= 3)
+lines(type_by_month$Month,type_by_month$NAS,col="blue", type = "b", pch= 1)
+lines(type_by_month$Month,type_by_month$Total, col="black")
+
+```
+
+
+
+## 2
+
+Calls the tm library and defines a reader function that will be used later on
+```{r}
+library(tm) 
+
+readerPlain = function(fname){
+				readPlain(elem=list(content=readLines(fname)), 
+							id=fname, language='en') }
+```
+
+Training corpus
+```{r}
+# Rolls 50 directories together into a single training corpus
+author_dirs = Sys.glob('./ReutersC50/C50train/*')
+file_list = NULL #list of file directories
+train_labels = NULL #List of author names
+for(author in author_dirs) {
+  author_name = substring(author, first=23)
+  files_to_add = Sys.glob(paste0(author, '/*.txt'))
+  file_list = append(file_list, files_to_add)
+  train_labels = append(train_labels, rep(author_name, length(files_to_add)))
+}
+
+# Creates our training corpus from the file_list using the readerPlain function 
+
+all_docs = lapply(file_list, readerPlain) #Read in all docs
+names(all_docs) = file_list 
+names(all_docs) = sub('.txt', '', names(all_docs))
+
+train_corpus = Corpus(VectorSource(all_docs)) 
+names(train_corpus) = file_list
+
+# Preprocessing steps for our training corpus
+
+# make everything lowercase
+train_corpus = tm_map(train_corpus, content_transformer(tolower)) 
+
+# remove numbers
+train_corpus = tm_map(train_corpus, content_transformer(removeNumbers)) 
+
+# remove punctuation
+train_corpus = tm_map(train_corpus, content_transformer(removePunctuation)) 
+
+# remove excess white-space
+train_corpus = tm_map(train_corpus, content_transformer(stripWhitespace)) 
+
+# remove stop words
+train_corpus = tm_map(train_corpus, content_transformer(removeWords), stopwords("SMART"))
+
+# Creates a Training Document Term Matrix and removes sparse words
+DTM_train = DocumentTermMatrix(train_corpus)
+class(DTM_train)
+DTM_train = removeSparseTerms(DTM_train, 0.95)
+DTM_train_matrix = as.matrix(DTM_train)
+# Above I arbitrarily picked .95 as my threshold for sparsity.  The interpretation of this number is that a word will not be included in our DTM unless it appears in at least 5% of the documents (1 -.95 = .05 = 5%)
+```
+
+Test corpus
+```{r}
+# Rolls 50 directories together into a single test corpus
+author_dirs = Sys.glob('./ReutersC50/C50test/*')
+file_list = NULL
+test_labels = NULL
+for(author in author_dirs) {
+  author_name = substring(author, first=22)
+  files_to_add = Sys.glob(paste0(author, '/*.txt'))
+  file_list = append(file_list, files_to_add)
+  test_labels = append(test_labels, rep(author_name, length(files_to_add)))
+}
+
+# Creates our test corpus from the file_list using the readerPlain function 
+all_docs = lapply(file_list, readerPlain) 
+names(all_docs) = file_list
+names(all_docs) = sub('.txt', '', names(all_docs))
+
+#Initialize Testing Corpus
+test_corpus = Corpus(VectorSource(all_docs))
+names(test_corpus) = file_list
+
+#Preprocessing steps for our test corpus
+test_corpus = tm_map(test_corpus, content_transformer(tolower)) 
+test_corpus = tm_map(test_corpus, content_transformer(removeNumbers)) 
+test_corpus = tm_map(test_corpus, content_transformer(removePunctuation)) 
+test_corpus = tm_map(test_corpus, content_transformer(stripWhitespace)) 
+test_corpus = tm_map(test_corpus, content_transformer(removeWords), stopwords("SMART"))
+
+# create a dictionary of all the words from our training set
+train_names_dict = NULL
+train_names_dict = dimnames(DTM_train)[[2]]
+class(train_names_dict)
+
+
+# Creates a Test Document Term Matrix using our set of training words and removes sparse words
+DTM_test = DocumentTermMatrix(test_corpus, list(dictionary=train_names_dict))
+DTM_test_matrix = as.matrix(DTM_test)
+```
+
+---
+title: "Naive Bayes"
+author: "Carter Pearon"
+date: "August 19, 2015"
+output: html_document
+---
+
+Naive Bayes
+```{r, results="hide"}
+library(e1071)
+library(caret)
+library(rpart)
+
+
+# Create our model using the training data
+model_NB = naiveBayes(x = DTM_train_matrix, y = as.factor(train_labels))
+
+# Making our predictions use the Naive Bayes model and our Test set
+pred_NB = predict(model_NB, DTM_test_matrix)
+
+# Create a confusion matrix and assess the accuracy of our predictions
+confusion_matrix = confusionMatrix(table(pred_NB, train_labels))
+confusion_matrix$overall
+```
+Using this Naive Bayes model and a sparsity threshold of 5% (.95), the model accurately predicted the author 26.2% of the time.  I played around a little bit with this sparsity threshold, and .95 gave me the best accuracy!d to the code chunk to prevent printing of the R code that generated the plot.
+
+
+Random Forest
+```{r}
+library(randomForest)
+
+randomforest = randomForest(x= DTM_train_matrix, y= as.factor(train_labels), mtry = 3, ntree=500)
+rfpredict = predict(randomforest, data = DTM_test_matrix)
+confusionrf = confusionMatrix(table(rfpredict, test_labels))
+confusionrf$overall
+```
+Our random forest model gives an accuracy of 69.36%, which is substantially better than the accuracy from our Naive Bayes model!
+
+
+## 3
+
+For the following problem, I tried different combinations of the parameters to see how it affected the set of association rules.  I chose a support of .01, as anything much higher than that excluded all of the products.  To keep things fairly simple at first I chose a maxlen of 3, as adding additional complex combinations of product mixes might make even harder to find some meaningful or insightful association rules 
+```{r}
+library(arules)  
+
+# read in the data
+groceries = read.transactions("groceries.txt", format = 'basket', sep = ',')
+
+head(groceries)
+summary(groceries)
+
+# create the association rules
+groceriesrules = apriori(groceries, parameter=list(support=.01, confidence=.5, maxlen=3))
+
+#inspect all of the rules
+inspect(groceriesrules)
+```
+Now let's impose some restrictions on our association rules to see if we can hone in on some of the important relationships between product mixes for our set of transactions
+
+In this first subset of rules I inspect rules with a lift greater than 2 to see if there are any product mixtures that are correlated with some other product mixtures. We know from probability theory that two events are independent if the product of their individual probabilities is equal to the joint probability of the two events, and thus a lift of 1 indicates no association (independence) between two sets of products. There seem to be about 14 transactions that have a lift greater than 2, however none of these rules seem to be all that interesting or telling.  People who buy yogurt and curds tend to buy whole milk as well or people who buy root vegetables and tropical fruits also buy other vegetables are not all that informative from a product placement standpoint
+
+```{r}
+# Look at rules with lift > 2
+inspect(subset(groceriesrules, subset=lift > 2))
+```
+
+Another way to find interesting rules is through a minimum confidence threshold.  We already established a minimum confidence of .5 in our original model, but let's tweak this a little bit.  For some association rule X --> Y, the confidence of that rule can be thought of as a conditional probability, specifically the probability of observing Y given that we've observed X. I played around with a few different balues of confidence, and .55 seemed to narrow down the rules a good amount.  The results are similar to the results we saw before, there aren't any rules that stand out or are all that surpising, but we have some rules nonetheless. 
+```{r}
+inspect(subset(groceriesrules, subset=confidence > 0.55))
+```
+
