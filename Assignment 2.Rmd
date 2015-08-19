@@ -168,7 +168,7 @@ date: "August 19, 2015"
 output: html_document
 ---
 
-Naive Bayes
+Now let’s build a Naive Bayes model
 ```{r, results="hide"}
 library(e1071)
 library(caret)
@@ -197,7 +197,7 @@ rfpredict = predict(randomforest, data = DTM_test_matrix)
 confusionrf = confusionMatrix(table(rfpredict, test_labels))
 confusionrf$overall
 ```
-Our random forest model gives an accuracy of 69.36%, which is substantially better than the accuracy from our Naive Bayes model!
+Our random forest model gives an accuracy of 74.52%, which is substantially better than the accuracy from our Naive Bayes model!
 
 
 ## 3
